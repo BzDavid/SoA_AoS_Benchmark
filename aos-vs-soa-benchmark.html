@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AoS vs SoA — Benchmark de layout de memoria</title>
+<style>
+  :root{
+    --bg: #000000;
+    --surface: #171D26;
+    --surface-2: #1D2531;
+    --border: #2A3341;
+    --text: #E8ECF1;
+    --muted: #8B98A9;
+    --soa: #2ed001;
+    --soa-dim: #274944;
+    --aos: #fc4108;
+    --aos-dim: #4a3229;
+  }
+
+  *{ box-sizing: border-box; }
+
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap{
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+
+  header{ margin-bottom: 40px; }
+
+  .eyebrow{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--soa);
+    margin: 0 0 10px;
+  }
+
+  h1{
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.15;
+    margin: 0 0 14px;
+    font-weight: 700;
+  }
+
+  header p{
+    color: var(--muted);
+    max-width: 640px;
+    line-height: 1.6;
+    font-size: 15px;
+    margin: 0;
+  }
+
+  /* --- memory visualization (signature element) --- */
+  .memory-viz{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 40px 0;
+  }
+
+  .mem-block{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+  }
+
+  .mem-block .label{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    color: var(--muted);
+  }
+
+  .mem-block .label b{ color: var(--text); }
+
+  .cells{
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 3px;
+  }
+
+  .cell{
+    aspect-ratio: 1;
+    border-radius: 2px;
+    background: #232b38;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .cell.active{
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.4) inset;
+    transform: scale(1.15);
+  }
+
+  /* field colors within a struct (AoS) */
+  .f0{ background: #E37B5A; }
+  .f1{ background: #C96A80; }
+  .f2{ background: #8D6BC9; }
+  .f3{ background: #5B7FCE; }
+  .f4{ background: #4FA0D9; }
+  .f5{ background: #4FD1C5; }
+
+  /* SoA: contiguous bands, one color per array */
+  .soa-band{ background: var(--soa); opacity: 0.85; }
+
+  .mem-caption{
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 12px;
+    line-height: 1.5;
+  }
+
+  /* --- controls --- */
+  .panel{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  .panel h2{
+    font-size: 15px;
+    margin: 0 0 18px;
+    font-weight: 600;
+    display:flex;
+    align-items:center;
+    gap: 8px;
+  }
+
+  .panel h2::before{
+    content:'';
+    width: 6px; height:6px; border-radius:50%;
+    background: var(--soa);
+    display:inline-block;
+  }
+
+  .controls{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  .field label{
+    display:block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .field .value{
+    color: var(--soa);
+  }
+
+  input[type=range]{
+    width: 100%;
+    accent-color: var(--soa);
+  }
+
+  select{
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  .run-row{
+    margin-top: 24px;
+    display:flex;
+    align-items:center;
+    gap: 16px;
+  }
+
+  button#run{
+    background: var(--soa);
+    color: #0B1512;
+    border: none;
+    padding: 13px 26px;
+    border-radius: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.1s ease;
+  }
+
+  button#run:hover{ filter: brightness(1.08); }
+  button#run:active{ transform: scale(0.98); }
+  button#run:disabled{ opacity: 0.5; cursor: default; }
+
+  #status{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* --- results --- */
+  .results{ display: none; }
+  .results.show{ display: block; }
+
+  .headline{
+    text-align: center;
+    padding: 32px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 24px;
+  }
+
+  .headline .num{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--soa);
+    line-height: 1;
+  }
+
+  .headline .sub{
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 10px;
+  }
+
+  .bars{
+    display: grid;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .bar-row{
+    display: grid;
+    grid-template-columns: 90px 1fr 110px;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .bar-row .tag{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .bar-row.aos .tag{ color: var(--aos); }
+  .bar-row.soa .tag{ color: var(--soa); }
+
+  .track{
+    background: var(--surface-2);
+    border-radius: 6px;
+    height: 22px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .fill{
+    height: 100%;
+    border-radius: 5px 0 0 5px;
+    transition: width 0.6s cubic-bezier(.2,.8,.2,1);
+    width: 0%;
+  }
+
+  .fill.aos{ background: var(--aos); }
+  .fill.soa{ background: var(--soa); }
+
+  .bar-row .ms{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    text-align: right;
+    color: var(--muted);
+  }
+
+  table.samples{
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  table.samples th, table.samples td{
+    text-align: right;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  table.samples th:first-child, table.samples td:first-child{
+    text-align: left;
+    color: var(--text);
+  }
+
+  table.samples th{
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+
+  footer{
+    margin-top: 40px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  footer code{
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  @media (max-width: 640px){
+    .controls{ grid-template-columns: 1fr; }
+    .memory-viz{ grid-template-columns: 1fr; }
+    .bar-row{ grid-template-columns: 70px 1fr 80px; }
+    .headline .num{ font-size: 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <!-- <p class="eyebrow">Layout de memoria en JS</p> -->
+    <h1>Array of Structures vs Structure of Arrays</h1>
+    <p>Mismos datos, dos formas de guardarlos en memoria. Este benchmark simula un sistema de partículas (posición + velocidad) actualizándose en cada frame, una vez con un array de objetos y otra con <code>Float32Array</code> separados por campo.</p>
+  </header>
+
+  <div class="memory-viz">
+    <div class="mem-block">
+      <div class="label"><b>Array of Structures (AoS)</b></div>
+      <div class="cells" id="aosCells"></div>
+      <p class="mem-caption">Cada partícula es un objeto <code style="font-family:'JetBrains Mono',monospace">{x,y,z,vx,vy,vz}</code>. Al recorrer solo <code style="font-family:'JetBrains Mono',monospace">x</code>, la CPU igual carga toda la estructura en caché.</p>
+    </div>
+    <div class="mem-block">
+      <div class="label"><b>Structure of Arrays (SoA)</b></div>
+      <div class="cells" id="soaCells"></div>
+      <p class="mem-caption">Seis <code style="font-family:'JetBrains Mono',monospace">Float32Array</code> independientes. Recorrer un campo accede a memoria contigua, aprovechando mejor la caché del procesador.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Parámetros</h2>
+    <div class="controls">
+      <div class="field">
+        <label>Partículas: <span class="value" id="nOut">500,000</span></label>
+        <input type="range" id="n" min="10000" max="3000000" step="10000" value="500000">
+      </div>
+      <div class="field">
+        <label>Frames de simulación: <span class="value" id="itOut">120</span></label>
+        <input type="range" id="iterations" min="10" max="500" step="10" value="120">
+      </div>
+      <div class="field">
+        <label>Repeticiones por método</label>
+        <select id="runs">
+          <option value="3">3 (rápido)</option>
+          <option value="5" selected>5 (recomendado)</option>
+          <option value="9">9 (más estable)</option>
+        </select>
+      </div>
+    </div>
+    <div class="run-row">
+      <button id="run">Correr benchmark</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div class="results" id="results">
+    <div class="headline">
+      <div class="num" id="speedup">—</div>
+      <div class="sub">más rápido SoA vs AoS (mediana de las repeticiones)</div>
+    </div>
+
+    <div class="bars">
+      <div class="bar-row aos">
+        <span class="tag">AoS</span>
+        <div class="track"><div class="fill aos" id="fillAos"></div></div>
+        <span class="ms" id="msAos">—</span>
+      </div>
+      <div class="bar-row soa">
+        <span class="tag">SoA</span>
+        <div class="track"><div class="fill soa" id="fillSoa"></div></div>
+        <span class="ms" id="msSoa">—</span>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:0">
+      <h2>Muestras individuales (ms)</h2>
+      <table class="samples" id="samplesTable"></table>
+    </div>
+  </div>
+
+  <footer>
+    Cada corrida hace un <code>warmup</code> descartado antes de medir, y reporta la mediana para reducir ruido del JIT y del recolector de basura. El bucle cede el hilo entre repeticiones (<code>await</code> + <code>setTimeout</code>) para que la pestaña no se congele en N grandes.
+  </footer>
+
+</div>
+
+<script>
+  // ---------- memory visualization ----------
+  const AOS_CELLS = 96;
+  const aosCells = document.getElementById('aosCells');
+  const soaCells = document.getElementById('soaCells');
+  let col1 = 0; 
+
+  for(let i=0;i<AOS_CELLS;i++){
+    const d = document.createElement('div');
+    d.className = 'cell f' + (i % 6);
+    aosCells.appendChild(d);
+  }
+  for(let i=0;i<AOS_CELLS;i++){
+    if(i % 16 === 0) col1++;
+    const d = document.createElement('div');
+    d.className = 'cell f' + Math.floor(i / 16);
+    soaCells.appendChild(d);
+  }
+
+  let scanTimer = null;
+  function animateScan(active){
+    const aosChildren = [...aosCells.children];
+    const soaChildren = [...soaCells.children];
+    if(!active){
+      clearInterval(scanTimer);
+      aosChildren.forEach(c=>c.classList.remove('active'));
+      soaChildren.forEach(c=>c.classList.remove('active'));
+      return;
+    }
+    let i = 0;
+    scanTimer = setInterval(()=>{
+      aosChildren.forEach(c=>c.classList.remove('active'));
+      soaChildren.forEach(c=>c.classList.remove('active'));
+      // AoS: cursor jumps by 6 (whole struct touched) but "lights up" one field at a time within it
+      aosChildren[i % AOS_CELLS].classList.add('active');
+      // SoA: cursor sweeps contiguous band
+      soaChildren[i % AOS_CELLS].classList.add('active');
+      i += 4;
+    }, 70);
+  }
+
+  // ---------- controls wiring ----------
+  const nSlider = document.getElementById('n');
+  const itSlider = document.getElementById('iterations');
+  const nOut = document.getElementById('nOut');
+  const itOut = document.getElementById('itOut');
+
+  const fmt = (v) => Number(v).toLocaleString('es-AR');
+  nSlider.addEventListener('input', () => nOut.textContent = fmt(nSlider.value));
+  itSlider.addEventListener('input', () => itOut.textContent = fmt(itSlider.value));
+
+  function yieldToUI(){
+    return new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  // ---------- AoS benchmark ----------
+  function buildAoS(n){
+    const particles = new Array(n);
+    for(let i=0;i<n;i++){
+      particles[i] = {
+        x: Math.random()*100, y: Math.random()*100, z: Math.random()*100,
+        vx: Math.random()-0.5, vy: Math.random()-0.5, vz: Math.random()-0.5
+      };
+    }
+    return particles;
+  }
+
+  function stepAoS(particles){
+    for(let i=0;i<particles.length;i++){
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.z += p.vz;
+    }
+  }
+
+  function timeAoS(n, iterations){
+    const particles = buildAoS(n);
+    const t0 = performance.now();
+    for(let f=0; f<iterations; f++) stepAoS(particles);
+    const t1 = performance.now();
+    // evita que el motor optimice el resultado como "no usado"
+    let sink = 0;
+    for(let i=0;i<particles.length;i+=99999) sink += particles[i].x;
+    if(sink === Number.NaN) console.log(sink);
+    return t1 - t0;
+  }
+
+  // ---------- SoA benchmark ----------
+  function buildSoA(n){
+    const x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n);
+    const vx = new Float32Array(n), vy = new Float32Array(n), vz = new Float32Array(n);
+    for(let i=0;i<n;i++){
+      x[i] = Math.random()*100; y[i] = Math.random()*100; z[i] = Math.random()*100;
+      vx[i] = Math.random()-0.5; vy[i] = Math.random()-0.5; vz[i] = Math.random()-0.5;
+    }
+    return {x,y,z,vx,vy,vz};
+  }
+
+  function stepSoA(s){
+    const {x,y,z,vx,vy,vz} = s;
+    const n = x.length;
+    for(let i=0;i<n;i++) x[i] += vx[i];
+    for(let i=0;i<n;i++) y[i] += vy[i];
+    for(let i=0;i<n;i++) z[i] += vz[i];
+  }
+
+  function timeSoA(n, iterations){
+    const s = buildSoA(n);
+    const t0 = performance.now();
+    for(let f=0; f<iterations; f++) stepSoA(s);
+    const t1 = performance.now();
+    let sink = 0;
+    for(let i=0;i<s.x.length;i+=99999) sink += s.x[i];
+    if(sink === Number.NaN) console.log(sink);
+    return t1 - t0;
+  }
+
+  function median(arr){
+    const sorted = [...arr].sort((a,b)=>a-b);
+    const mid = Math.floor(sorted.length/2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
+  }
+
+  // ---------- run orchestration ----------
+  const runBtn = document.getElementById('run');
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+
+  runBtn.addEventListener('click', async () => {
+    const n = parseInt(nSlider.value, 10);
+    const iterations = parseInt(itSlider.value, 10);
+    const runs = parseInt(document.getElementById('runs').value, 10);
+
+    runBtn.disabled = true;
+    resultsEl.classList.remove('show');
+    animateScan(true);
+
+    const aosSamples = [];
+    const soaSamples = [];
+
+    statusEl.textContent = 'warmup…';
+    await yieldToUI();
+    timeAoS(Math.min(n, 50000), 5);
+    timeSoA(Math.min(n, 50000), 5);
+    await yieldToUI();
+
+    for(let r=0; r<runs; r++){
+      statusEl.textContent = `corriendo AoS (${r+1}/${runs})…`;
+      await yieldToUI();
+      aosSamples.push(timeAoS(n, iterations));
+
+      statusEl.textContent = `corriendo SoA (${r+1}/${runs})…`;
+      await yieldToUI();
+      soaSamples.push(timeSoA(n, iterations));
+    }
+
+    animateScan(false);
+    statusEl.textContent = `listo — ${fmt(n)} partículas × ${fmt(iterations)} frames`;
+    runBtn.disabled = false;
+
+    const aosMed = median(aosSamples);
+    const soaMed = median(soaSamples);
+    const speedup = aosMed / soaMed;
+
+    document.getElementById('speedup').textContent = speedup.toFixed(2) + '×';
+    document.getElementById('msAos').textContent = aosMed.toFixed(1) + ' ms';
+    document.getElementById('msSoa').textContent = soaMed.toFixed(1) + ' ms';
+
+    const maxMs = Math.max(aosMed, soaMed);
+    document.getElementById('fillAos').style.width = (aosMed/maxMs*100) + '%';
+    document.getElementById('fillSoa').style.width = (soaMed/maxMs*100) + '%';
+
+    const table = document.getElementById('samplesTable');
+    let html = '<tr><th>Corrida</th>' + aosSamples.map((_,i)=>`<th>#${i+1}</th>`).join('') + '</tr>';
+    html += '<tr><td>AoS</td>' + aosSamples.map(v=>`<td>${v.toFixed(1)}</td>`).join('') + '</tr>';
+    html += '<tr><td>SoA</td>' + soaSamples.map(v=>`<td>${v.toFixed(1)}</td>`).join('') + '</tr>';
+    table.innerHTML = html;
+
+    resultsEl.classList.add('show');
+  });
+</script>
+</body>
+</html>
