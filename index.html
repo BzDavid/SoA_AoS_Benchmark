@@ -415,65 +415,63 @@
 </div>
 
 <script>
-  // ---------- memory visualization ----------
-  const AOS_CELLS = 96;
-  const aosCells = document.getElementById('aosCells');
-  const soaCells = document.getElementById('soaCells');
-  let col1 = 0; 
+  // ---------- visualización de memoria ----------
+  const TOTAL_CELLS = 96;
+  const aosGrid = document.getElementById('aosCells');
+  const soaGrid = document.getElementById('soaCells');
 
-  for(let i=0;i<AOS_CELLS;i++){
-    const d = document.createElement('div');
-    d.className = 'cell f' + (i % 6);
-    aosCells.appendChild(d);
+  for(let cellIndex=0; cellIndex<TOTAL_CELLS; cellIndex++){
+    const cell = document.createElement('div');
+    cell.className = 'cell f' + (cellIndex % 6);
+    aosGrid.appendChild(cell);
   }
-  for(let i=0;i<AOS_CELLS;i++){
-    if(i % 16 === 0) col1++;
-    const d = document.createElement('div');
-    d.className = 'cell f' + Math.floor(i / 16);
-    soaCells.appendChild(d);
+  for(let cellIndex=0; cellIndex<TOTAL_CELLS; cellIndex++){
+    const cell = document.createElement('div');
+    cell.className = 'cell f' + Math.floor(cellIndex / 16);
+    soaGrid.appendChild(cell);
   }
 
-  let scanTimer = null;
-  function animateScan(active){
-    const aosChildren = [...aosCells.children];
-    const soaChildren = [...soaCells.children];
-    if(!active){
-      clearInterval(scanTimer);
-      aosChildren.forEach(c=>c.classList.remove('active'));
-      soaChildren.forEach(c=>c.classList.remove('active'));
+  let scanIntervalId = null;
+  function animateScan(isActive){
+    const aosCellNodes = [...aosGrid.children];
+    const soaCellNodes = [...soaGrid.children];
+    if(!isActive){
+      clearInterval(scanIntervalId);
+      aosCellNodes.forEach(node => node.classList.remove('active'));
+      soaCellNodes.forEach(node => node.classList.remove('active'));
       return;
     }
-    let i = 0;
-    scanTimer = setInterval(()=>{
-      aosChildren.forEach(c=>c.classList.remove('active'));
-      soaChildren.forEach(c=>c.classList.remove('active'));
-      // AoS: cursor jumps by 6 (whole struct touched) but "lights up" one field at a time within it
-      aosChildren[i % AOS_CELLS].classList.add('active');
-      // SoA: cursor sweeps contiguous band
-      soaChildren[i % AOS_CELLS].classList.add('active');
-      i += 4;
+    let cursor = 0;
+    scanIntervalId = setInterval(() => {
+      aosCellNodes.forEach(node => node.classList.remove('active'));
+      soaCellNodes.forEach(node => node.classList.remove('active'));
+      // AoS: el cursor recorre toda la estructura intercalada
+      aosCellNodes[cursor % TOTAL_CELLS].classList.add('active');
+      // SoA: el cursor barre una banda contigua
+      soaCellNodes[cursor % TOTAL_CELLS].classList.add('active');
+      cursor += 4;
     }, 70);
   }
 
-  // ---------- controls wiring ----------
-  const nSlider = document.getElementById('n');
-  const itSlider = document.getElementById('iterations');
-  const nOut = document.getElementById('nOut');
-  const itOut = document.getElementById('itOut');
+  // ---------- controles ----------
+  const particleSlider = document.getElementById('n');
+  const frameSlider = document.getElementById('iterations');
+  const particleCountLabel = document.getElementById('nOut');
+  const frameCountLabel = document.getElementById('itOut');
 
-  const fmt = (v) => Number(v).toLocaleString('es-AR');
-  nSlider.addEventListener('input', () => nOut.textContent = fmt(nSlider.value));
-  itSlider.addEventListener('input', () => itOut.textContent = fmt(itSlider.value));
+  const formatNumber = (value) => Number(value).toLocaleString('es-AR');
+  particleSlider.addEventListener('input', () => particleCountLabel.textContent = formatNumber(particleSlider.value));
+  frameSlider.addEventListener('input', () => frameCountLabel.textContent = formatNumber(frameSlider.value));
 
   function yieldToUI(){
     return new Promise(resolve => setTimeout(resolve, 0));
   }
 
-  // ---------- AoS benchmark ----------
-  function buildAoS(n){
-    const particles = new Array(n);
-    for(let i=0;i<n;i++){
-      particles[i] = {
+  // ---------- benchmark AoS ----------
+  function buildAoSParticles(particleCount){
+    const particles = new Array(particleCount);
+    for(let index=0; index<particleCount; index++){
+      particles[index] = {
         x: Math.random()*100, y: Math.random()*100, z: Math.random()*100,
         vx: Math.random()-0.5, vy: Math.random()-0.5, vz: Math.random()-0.5
       };
@@ -481,119 +479,119 @@
     return particles;
   }
 
-  function stepAoS(particles){
-    for(let i=0;i<particles.length;i++){
-      const p = particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.z += p.vz;
+  function stepAoSParticles(particles){
+    for(let index=0; index<particles.length; index++){
+      const particle = particles[index];
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+      particle.z += particle.vz;
     }
   }
 
-  function timeAoS(n, iterations){
-    const particles = buildAoS(n);
-    const t0 = performance.now();
-    for(let f=0; f<iterations; f++) stepAoS(particles);
-    const t1 = performance.now();
+  function timeAoSBenchmark(particleCount, frameCount){
+    const particles = buildAoSParticles(particleCount);
+    const startTime = performance.now();
+    for(let frame=0; frame<frameCount; frame++) stepAoSParticles(particles);
+    const endTime = performance.now();
     // evita que el motor optimice el resultado como "no usado"
-    let sink = 0;
-    for(let i=0;i<particles.length;i+=99999) sink += particles[i].x;
-    if(sink === Number.NaN) console.log(sink);
-    return t1 - t0;
+    let checksum = 0;
+    for(let index=0; index<particles.length; index+=99999) checksum += particles[index].x;
+    if(checksum === Number.NaN) console.log(checksum);
+    return endTime - startTime;
   }
 
-  // ---------- SoA benchmark ----------
-  function buildSoA(n){
-    const x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n);
-    const vx = new Float32Array(n), vy = new Float32Array(n), vz = new Float32Array(n);
-    for(let i=0;i<n;i++){
-      x[i] = Math.random()*100; y[i] = Math.random()*100; z[i] = Math.random()*100;
-      vx[i] = Math.random()-0.5; vy[i] = Math.random()-0.5; vz[i] = Math.random()-0.5;
+  // ---------- benchmark SoA ----------
+  function buildSoAParticles(particleCount){
+    const x = new Float32Array(particleCount), y = new Float32Array(particleCount), z = new Float32Array(particleCount);
+    const vx = new Float32Array(particleCount), vy = new Float32Array(particleCount), vz = new Float32Array(particleCount);
+    for(let index=0; index<particleCount; index++){
+      x[index] = Math.random()*100; y[index] = Math.random()*100; z[index] = Math.random()*100;
+      vx[index] = Math.random()-0.5; vy[index] = Math.random()-0.5; vz[index] = Math.random()-0.5;
     }
     return {x,y,z,vx,vy,vz};
   }
 
-  function stepSoA(s){
-    const {x,y,z,vx,vy,vz} = s;
-    const n = x.length;
-    for(let i=0;i<n;i++) x[i] += vx[i];
-    for(let i=0;i<n;i++) y[i] += vy[i];
-    for(let i=0;i<n;i++) z[i] += vz[i];
+  function stepSoAParticles(soaData){
+    const {x,y,z,vx,vy,vz} = soaData;
+    const particleCount = x.length;
+    for(let index=0; index<particleCount; index++) x[index] += vx[index];
+    for(let index=0; index<particleCount; index++) y[index] += vy[index];
+    for(let index=0; index<particleCount; index++) z[index] += vz[index];
   }
 
-  function timeSoA(n, iterations){
-    const s = buildSoA(n);
-    const t0 = performance.now();
-    for(let f=0; f<iterations; f++) stepSoA(s);
-    const t1 = performance.now();
-    let sink = 0;
-    for(let i=0;i<s.x.length;i+=99999) sink += s.x[i];
-    if(sink === Number.NaN) console.log(sink);
-    return t1 - t0;
+  function timeSoABenchmark(particleCount, frameCount){
+    const soaData = buildSoAParticles(particleCount);
+    const startTime = performance.now();
+    for(let frame=0; frame<frameCount; frame++) stepSoAParticles(soaData);
+    const endTime = performance.now();
+    let checksum = 0;
+    for(let index=0; index<soaData.x.length; index+=99999) checksum += soaData.x[index];
+    if(checksum === Number.NaN) console.log(checksum);
+    return endTime - startTime;
   }
 
-  function median(arr){
-    const sorted = [...arr].sort((a,b)=>a-b);
-    const mid = Math.floor(sorted.length/2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
+  function median(values){
+    const sortedValues = [...values].sort((a,b) => a-b);
+    const middleIndex = Math.floor(sortedValues.length/2);
+    return sortedValues.length % 2 ? sortedValues[middleIndex] : (sortedValues[middleIndex-1]+sortedValues[middleIndex])/2;
   }
 
-  // ---------- run orchestration ----------
-  const runBtn = document.getElementById('run');
-  const statusEl = document.getElementById('status');
-  const resultsEl = document.getElementById('results');
+  // ---------- orquestación de la corrida ----------
+  const runButton = document.getElementById('run');
+  const statusLabel = document.getElementById('status');
+  const resultsSection = document.getElementById('results');
 
-  runBtn.addEventListener('click', async () => {
-    const n = parseInt(nSlider.value, 10);
-    const iterations = parseInt(itSlider.value, 10);
-    const runs = parseInt(document.getElementById('runs').value, 10);
+  runButton.addEventListener('click', async () => {
+    const particleCount = parseInt(particleSlider.value, 10);
+    const frameCount = parseInt(frameSlider.value, 10);
+    const repetitionCount = parseInt(document.getElementById('runs').value, 10);
 
-    runBtn.disabled = true;
-    resultsEl.classList.remove('show');
+    runButton.disabled = true;
+    resultsSection.classList.remove('show');
     animateScan(true);
 
-    const aosSamples = [];
-    const soaSamples = [];
+    const aosDurations = [];
+    const soaDurations = [];
 
-    statusEl.textContent = 'warmup…';
+    statusLabel.textContent = 'warmup…';
     await yieldToUI();
-    timeAoS(Math.min(n, 50000), 5);
-    timeSoA(Math.min(n, 50000), 5);
+    timeAoSBenchmark(Math.min(particleCount, 50000), 5);
+    timeSoABenchmark(Math.min(particleCount, 50000), 5);
     await yieldToUI();
 
-    for(let r=0; r<runs; r++){
-      statusEl.textContent = `corriendo AoS (${r+1}/${runs})…`;
+    for(let repetition=0; repetition<repetitionCount; repetition++){
+      statusLabel.textContent = `corriendo AoS (${repetition+1}/${repetitionCount})…`;
       await yieldToUI();
-      aosSamples.push(timeAoS(n, iterations));
+      aosDurations.push(timeAoSBenchmark(particleCount, frameCount));
 
-      statusEl.textContent = `corriendo SoA (${r+1}/${runs})…`;
+      statusLabel.textContent = `corriendo SoA (${repetition+1}/${repetitionCount})…`;
       await yieldToUI();
-      soaSamples.push(timeSoA(n, iterations));
+      soaDurations.push(timeSoABenchmark(particleCount, frameCount));
     }
 
     animateScan(false);
-    statusEl.textContent = `listo — ${fmt(n)} partículas × ${fmt(iterations)} frames`;
-    runBtn.disabled = false;
+    statusLabel.textContent = `listo — ${formatNumber(particleCount)} partículas × ${formatNumber(frameCount)} frames`;
+    runButton.disabled = false;
 
-    const aosMed = median(aosSamples);
-    const soaMed = median(soaSamples);
-    const speedup = aosMed / soaMed;
+    const aosMedian = median(aosDurations);
+    const soaMedian = median(soaDurations);
+    const speedup = aosMedian / soaMedian;
 
     document.getElementById('speedup').textContent = speedup.toFixed(2) + '×';
-    document.getElementById('msAos').textContent = aosMed.toFixed(1) + ' ms';
-    document.getElementById('msSoa').textContent = soaMed.toFixed(1) + ' ms';
+    document.getElementById('msAos').textContent = aosMedian.toFixed(1) + ' ms';
+    document.getElementById('msSoa').textContent = soaMedian.toFixed(1) + ' ms';
 
-    const maxMs = Math.max(aosMed, soaMed);
-    document.getElementById('fillAos').style.width = (aosMed/maxMs*100) + '%';
-    document.getElementById('fillSoa').style.width = (soaMed/maxMs*100) + '%';
+    const maxDuration = Math.max(aosMedian, soaMedian);
+    document.getElementById('fillAos').style.width = (aosMedian/maxDuration*100) + '%';
+    document.getElementById('fillSoa').style.width = (soaMedian/maxDuration*100) + '%';
 
-    const table = document.getElementById('samplesTable');
-    let html = '<tr><th>Corrida</th>' + aosSamples.map((_,i)=>`<th>#${i+1}</th>`).join('') + '</tr>';
-    html += '<tr><td>AoS</td>' + aosSamples.map(v=>`<td>${v.toFixed(1)}</td>`).join('') + '</tr>';
-    html += '<tr><td>SoA</td>' + soaSamples.map(v=>`<td>${v.toFixed(1)}</td>`).join('') + '</tr>';
-    table.innerHTML = html;
+    const samplesTable = document.getElementById('samplesTable');
+    let tableHtml = '<tr><th>Corrida</th>' + aosDurations.map((_, i) => `<th>#${i+1}</th>`).join('') + '</tr>';
+    tableHtml += '<tr><td>AoS</td>' + aosDurations.map(duration => `<td>${duration.toFixed(1)}</td>`).join('') + '</tr>';
+    tableHtml += '<tr><td>SoA</td>' + soaDurations.map(duration => `<td>${duration.toFixed(1)}</td>`).join('') + '</tr>';
+    samplesTable.innerHTML = tableHtml;
 
-    resultsEl.classList.add('show');
+    resultsSection.classList.add('show');
   });
 </script>
 </body>
