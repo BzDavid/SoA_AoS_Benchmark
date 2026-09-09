@@ -99,11 +99,6 @@
     transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .cell.active{
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.4) inset;
-    transform: scale(1.15);
-  }
-
   /* field colors within a struct (AoS) */
   .f0{ background: #E37B5A; }
   .f1{ background: #C96A80; }
@@ -120,6 +115,47 @@
     color: var(--muted);
     margin-top: 12px;
     line-height: 1.5;
+  }
+
+  .mem-block canvas{
+    width: 100%;
+    height: auto;
+    display: block;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .live-controls{
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 18px;
+  }
+
+  .btn-toggle{
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 9px 18px;
+    border-radius: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+    height: fit-content;
+  }
+
+  .btn-toggle:hover{ border-color: var(--soa); color: var(--soa); }
+
+  .live-fps{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    height: fit-content;
+    padding-bottom: 10px;
   }
 
   /* --- controls --- */
@@ -358,6 +394,31 @@
   </div>
 
   <div class="panel">
+    <h2>Simulación en vivo</h2>
+    <p class="mem-caption" style="margin-top:-6px; margin-bottom:16px;">Estas partículas se mueven en tiempo real ejecutando exactamente el mismo cálculo que corre el benchmark: <code style="font-family:'JetBrains Mono',monospace">posición += velocidad</code>, frame a frame. La diferencia entre AoS y SoA está en cómo están guardados esos números en memoria, no en la fórmula.</p>
+
+    <div class="live-controls">
+      <div class="field" style="flex:1; min-width:200px;">
+        <label>Entidades por lado: <span class="value" id="liveCountOut">90</span></label>
+        <input type="range" id="liveCount" min="10" max="4000" step="10" value="90">
+      </div>
+      <button id="liveToggle" class="btn-toggle">Pausar</button>
+      <span id="liveFps" class="live-fps">-- fps</span>
+    </div>
+
+    <div class="memory-viz" style="margin: 0;">
+      <div class="mem-block">
+        <div class="label"><b>AoS</b><span>array de objetos</span></div>
+        <canvas id="aosCanvas" width="440" height="200"></canvas>
+      </div>
+      <div class="mem-block">
+        <div class="label"><b>SoA</b><span>Float32Array por campo</span></div>
+        <canvas id="soaCanvas" width="440" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
     <h2>Parámetros</h2>
     <div class="controls">
       <div class="field">
@@ -431,26 +492,147 @@
     soaGrid.appendChild(cell);
   }
 
-  let scanIntervalId = null;
-  function animateScan(isActive){
-    const aosCellNodes = [...aosGrid.children];
-    const soaCellNodes = [...soaGrid.children];
-    if(!isActive){
-      clearInterval(scanIntervalId);
-      aosCellNodes.forEach(node => node.classList.remove('active'));
-      soaCellNodes.forEach(node => node.classList.remove('active'));
-      return;
+  // ---------- simulación en vivo (canvas) ----------
+  // Usa el mismo cálculo que el benchmark (posición += velocidad) sobre un
+  // grupo de partículas ajustable, para que se vea en tiempo real qué hace el loop.
+  const rootColors = getComputedStyle(document.documentElement);
+  const aosLiveColor = rootColors.getPropertyValue('--aos').trim();
+  const soaLiveColor = rootColors.getPropertyValue('--soa').trim();
+
+  const aosCanvas = document.getElementById('aosCanvas');
+  const soaCanvas = document.getElementById('soaCanvas');
+  const aosCtx = aosCanvas.getContext('2d');
+  const soaCtx = soaCanvas.getContext('2d');
+  const canvasWidth = aosCanvas.width;
+  const canvasHeight = aosCanvas.height;
+
+  const liveCountSlider = document.getElementById('liveCount');
+  const liveCountLabel = document.getElementById('liveCountOut');
+  const liveToggleButton = document.getElementById('liveToggle');
+  const liveFpsLabel = document.getElementById('liveFps');
+
+  function buildLiveAoSParticles(count){
+    const particles = new Array(count);
+    for(let index=0; index<count; index++){
+      particles[index] = {
+        x: Math.random()*canvasWidth,
+        y: Math.random()*canvasHeight,
+        vx: (Math.random()-0.5) * 1.6,
+        vy: (Math.random()-0.5) * 1.6
+      };
     }
-    let cursor = 0;
-    scanIntervalId = setInterval(() => {
-      aosCellNodes.forEach(node => node.classList.remove('active'));
-      soaCellNodes.forEach(node => node.classList.remove('active'));
-      // AoS: el cursor recorre toda la estructura intercalada
-      aosCellNodes[cursor % TOTAL_CELLS].classList.add('active');
-      // SoA: el cursor barre una banda contigua
-      soaCellNodes[cursor % TOTAL_CELLS].classList.add('active');
-      cursor += 4;
-    }, 70);
+    return particles;
+  }
+
+  function stepLiveAoSParticles(particles){
+    for(let index=0; index<particles.length; index++){
+      const particle = particles[index];
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+      if(particle.x < 0 || particle.x > canvasWidth) particle.vx *= -1;
+      if(particle.y < 0 || particle.y > canvasHeight) particle.vy *= -1;
+    }
+  }
+
+  function buildLiveSoAParticles(count){
+    const x = new Float32Array(count), y = new Float32Array(count);
+    const vx = new Float32Array(count), vy = new Float32Array(count);
+    for(let index=0; index<count; index++){
+      x[index] = Math.random()*canvasWidth;
+      y[index] = Math.random()*canvasHeight;
+      vx[index] = (Math.random()-0.5) * 1.6;
+      vy[index] = (Math.random()-0.5) * 1.6;
+    }
+    return {x,y,vx,vy};
+  }
+
+  function stepLiveSoAParticles(soaData){
+    const {x,y,vx,vy} = soaData;
+    const count = x.length;
+    for(let index=0; index<count; index++) x[index] += vx[index];
+    for(let index=0; index<count; index++) y[index] += vy[index];
+    for(let index=0; index<count; index++){
+      if(x[index] < 0 || x[index] > canvasWidth) vx[index] *= -1;
+      if(y[index] < 0 || y[index] > canvasHeight) vy[index] *= -1;
+    }
+  }
+
+  function drawAoSFrame(particles){
+    aosCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+    aosCtx.fillStyle = aosLiveColor;
+    for(let index=0; index<particles.length; index++){
+      const particle = particles[index];
+      aosCtx.beginPath();
+      aosCtx.arc(particle.x, particle.y, 2.5, 0, Math.PI*2);
+      aosCtx.fill();
+    }
+  }
+
+  function drawSoAFrame(soaData){
+    soaCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+    soaCtx.fillStyle = soaLiveColor;
+    const {x,y} = soaData;
+    for(let index=0; index<x.length; index++){
+      soaCtx.beginPath();
+      soaCtx.arc(x[index], y[index], 2.5, 0, Math.PI*2);
+      soaCtx.fill();
+    }
+  }
+
+  let liveAoSParticles = buildLiveAoSParticles(parseInt(liveCountSlider.value, 10));
+  let liveSoAParticles = buildLiveSoAParticles(parseInt(liveCountSlider.value, 10));
+  let isLiveRunning = true;
+  let liveAnimationFrameId = null;
+
+  // medición de FPS: cuenta frames dibujados por segundo real
+  let fpsFrameCount = 0;
+  let fpsWindowStart = performance.now();
+
+  function liveAnimationLoop(){
+    stepLiveAoSParticles(liveAoSParticles);
+    stepLiveSoAParticles(liveSoAParticles);
+    drawAoSFrame(liveAoSParticles);
+    drawSoAFrame(liveSoAParticles);
+
+    fpsFrameCount++;
+    const now = performance.now();
+    const elapsed = now - fpsWindowStart;
+    if(elapsed >= 500){
+      const fps = (fpsFrameCount / elapsed) * 1000;
+      liveFpsLabel.textContent = fps.toFixed(0) + ' fps';
+      fpsFrameCount = 0;
+      fpsWindowStart = now;
+    }
+
+    if(isLiveRunning){
+      liveAnimationFrameId = requestAnimationFrame(liveAnimationLoop);
+    }
+  }
+  liveAnimationFrameId = requestAnimationFrame(liveAnimationLoop);
+
+  liveToggleButton.addEventListener('click', () => {
+    isLiveRunning = !isLiveRunning;
+    if(isLiveRunning){
+      liveToggleButton.textContent = 'Pausar';
+      fpsFrameCount = 0;
+      fpsWindowStart = performance.now();
+      liveAnimationFrameId = requestAnimationFrame(liveAnimationLoop);
+    } else {
+      liveToggleButton.textContent = 'Reanudar';
+      liveFpsLabel.textContent = 'en pausa';
+      cancelAnimationFrame(liveAnimationFrameId);
+    }
+  });
+
+  liveCountSlider.addEventListener('input', () => {
+    const newCount = parseInt(liveCountSlider.value, 10);
+    liveCountLabel.textContent = formatNumberLive(newCount);
+    liveAoSParticles = buildLiveAoSParticles(newCount);
+    liveSoAParticles = buildLiveSoAParticles(newCount);
+  });
+
+  function formatNumberLive(value){
+    return Number(value).toLocaleString('es-AR');
   }
 
   // ---------- controles ----------
@@ -548,7 +730,6 @@
 
     runButton.disabled = true;
     resultsSection.classList.remove('show');
-    animateScan(true);
 
     const aosDurations = [];
     const soaDurations = [];
@@ -569,7 +750,6 @@
       soaDurations.push(timeSoABenchmark(particleCount, frameCount));
     }
 
-    animateScan(false);
     statusLabel.textContent = `listo — ${formatNumber(particleCount)} partículas × ${formatNumber(frameCount)} frames`;
     runButton.disabled = false;
 
