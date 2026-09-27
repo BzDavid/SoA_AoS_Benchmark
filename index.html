@@ -3,130 +3,168 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AoS vs SoA — Benchmark de layout de memoria</title>
+<title>AoS vs SoA | Benchmark de distribución de memoria</title>
 <style>
-  :root{
-    --bg: #000000;
-    --surface: #171D26;
-    --surface-2: #1D2531;
-    --border: #2A3341;
-    --text: #E8ECF1;
-    --muted: #8B98A9;
-    --soa: #2ed001;
-    --soa-dim: #274944;
-    --aos: #fc4108;
-    --aos-dim: #4a3229;
+  /* Google Fonts */
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    --card-bg: #ffffff;
+    --text-primary: #2d3748;
+    --text-secondary: #718096;
+    --border-color: #e2e8f0;
+    --primary-color: #2ed001; /* Verde SoA */
+    --primary-hover: #26b001;
+    --secondary-color: #fc4108; /* Rojo AoS */
+    --input-bg: #f8fafc;
+    --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
   }
 
-  *{ box-sizing: border-box; }
-
-  body{
-    margin:0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Space Grotesk', sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  .wrap{
-    max-width: 980px;
-    margin: 0 auto;
-    padding: 48px 24px 96px;
-  }
-
-  header{ margin-bottom: 40px; }
-
-  .eyebrow{
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--soa);
-    margin: 0 0 10px;
-  }
-
-  h1{
-    font-size: clamp(28px, 4vw, 40px);
-    line-height: 1.15;
-    margin: 0 0 14px;
-    font-weight: 700;
-  }
-
-  header p{
-    color: var(--muted);
-    max-width: 640px;
-    line-height: 1.6;
-    font-size: 15px;
+  * {
+    box-sizing: border-box;
     margin: 0;
+    padding: 0;
   }
 
-  /* --- memory visualization (signature element) --- */
-  .memory-viz{
+  body {
+    min-height: 100vh;
+    background: var(--bg-gradient);
+    color: var(--text-primary);
+    font-family: 'Poppins', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 15px;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 900px;
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 40px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 35px;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+
+  header p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 650px;
+    margin: 0 auto;
+  }
+
+  /* Visualización de memoria */
+  .memory-viz {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin: 40px 0;
+    gap: 20px;
+    margin: 25px 0;
   }
 
-  .mem-block{
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px;
+  .mem-block {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
   }
 
-  .mem-block .label{
+  .mem-block .label {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
+    font-size: 13px;
     display: flex;
     justify-content: space-between;
     margin-bottom: 12px;
-    color: var(--muted);
+    color: var(--text-secondary);
   }
 
-  .mem-block .label b{ color: var(--text); }
+  .mem-block .label b {
+    color: var(--text-primary);
+  }
 
-  .cells{
+  .cells {
     display: grid;
     grid-template-columns: repeat(24, 1fr);
-    gap: 3px;
+    gap: 2px;
   }
 
-  .cell{
+  .cell {
     aspect-ratio: 1;
     border-radius: 2px;
-    background: #232b38;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    background: #cbd5e1;
   }
 
-  /* field colors within a struct (AoS) */
-  .f0{ background: #E37B5A; }
-  .f1{ background: #C96A80; }
-  .f2{ background: #8D6BC9; }
-  .f3{ background: #5B7FCE; }
-  .f4{ background: #4FA0D9; }
-  .f5{ background: #4FD1C5; }
+  .f0 { background: #e37b5a; }
+  .f1 { background: #c96a80; }
+  .f2 { background: #8d6bc9; }
+  .f3 { background: #5b7fce; }
+  .f4 { background: #4fa0d9; }
+  .f5 { background: #4fd1c5; }
 
-  /* SoA: contiguous bands, one color per array */
-  .soa-band{ background: var(--soa); opacity: 0.85; }
-
-  .mem-caption{
+  .mem-caption {
     font-size: 12px;
-    color: var(--muted);
+    color: var(--text-secondary);
     margin-top: 12px;
     line-height: 1.5;
   }
 
-  .mem-block canvas{
+  .mem-block canvas {
     width: 100%;
     height: auto;
     display: block;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
   }
 
-  .live-controls{
+  /* Paneles */
+  .panel {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  .panel h2 {
+    font-size: 16px;
+    margin-bottom: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel h2::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    display: inline-block;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  .live-controls {
     display: flex;
     align-items: flex-end;
     flex-wrap: wrap;
@@ -134,240 +172,216 @@
     margin-bottom: 18px;
   }
 
-  .btn-toggle{
-    background: transparent;
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 9px 18px;
-    border-radius: 8px;
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 13px;
-    cursor: pointer;
-    transition: border-color 0.15s ease, color 0.15s ease;
-    height: fit-content;
-  }
-
-  .btn-toggle:hover{ border-color: var(--soa); color: var(--soa); }
-
-  .live-fps{
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: var(--muted);
-    height: fit-content;
-    padding-bottom: 10px;
-  }
-
-  /* --- controls --- */
-  .panel{
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 24px;
-    margin-bottom: 24px;
-  }
-
-  .panel h2{
-    font-size: 15px;
-    margin: 0 0 18px;
-    font-weight: 600;
-    display:flex;
-    align-items:center;
-    gap: 8px;
-  }
-
-  .panel h2::before{
-    content:'';
-    width: 6px; height:6px; border-radius:50%;
-    background: var(--soa);
-    display:inline-block;
-  }
-
-  .controls{
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-  }
-
-  .field label{
-    display:block;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
     margin-bottom: 8px;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
   }
 
-  .field .value{
-    color: var(--soa);
+  .field .value {
+    color: var(--text-primary);
+    font-weight: 600;
   }
 
-  input[type=range]{
+  /* Inputs y Selects estilo Login Card */
+  input[type=range] {
     width: 100%;
-    accent-color: var(--soa);
+    accent-color: var(--primary-color);
   }
 
-  select{
+  select {
     width: 100%;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-family: inherit;
     font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
   }
 
-  .run-row{
+  select:focus {
+    border-color: var(--primary-color);
+  }
+
+  /* Botones */
+  button#run {
+    background: var(--primary-color);
+    color: #ffffff;
+    border: none;
+    padding: 12px 28px;
+    border-radius: 25px;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    box-shadow: 0 4px 12px rgba(46, 208, 1, 0.3);
+  }
+
+  button#run:hover {
+    background: var(--primary-hover);
+  }
+
+  button#run:active {
+    transform: scale(0.98);
+  }
+
+  button#run:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-toggle {
+    background: #ffffff;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-family: inherit;
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-toggle:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+
+  .run-row {
     margin-top: 24px;
-    display:flex;
-    align-items:center;
+    display: flex;
+    align-items: center;
     gap: 16px;
   }
 
-  button#run{
-    background: var(--soa);
-    color: #0B1512;
-    border: none;
-    padding: 13px 26px;
-    border-radius: 8px;
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
-    transition: filter 0.15s ease, transform 0.1s ease;
-  }
-
-  button#run:hover{ filter: brightness(1.08); }
-  button#run:active{ transform: scale(0.98); }
-  button#run:disabled{ opacity: 0.5; cursor: default; }
-
-  #status{
+  #status {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    color: var(--muted);
+    color: var(--text-secondary);
   }
 
-  /* --- results --- */
-  .results{ display: none; }
-  .results.show{ display: block; }
+  /* Resultados */
+  .results { display: none; }
+  .results.show { display: block; }
 
-  .headline{
+  .headline {
     text-align: center;
-    padding: 32px 24px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    margin-bottom: 24px;
+    padding: 24px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    margin-bottom: 20px;
   }
 
-  .headline .num{
+  .headline .num {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 56px;
+    font-size: 48px;
     font-weight: 700;
-    color: var(--soa);
+    color: var(--primary-color);
     line-height: 1;
   }
 
-  .headline .sub{
-    color: var(--muted);
-    font-size: 14px;
-    margin-top: 10px;
+  .headline .sub {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-top: 8px;
   }
 
-  .bars{
+  .bars {
     display: grid;
-    gap: 14px;
+    gap: 12px;
     margin-bottom: 24px;
   }
 
-  .bar-row{
+  .bar-row {
     display: grid;
-    grid-template-columns: 90px 1fr 110px;
+    grid-template-columns: 80px 1fr 90px;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
   }
 
-  .bar-row .tag{
+  .bar-row .tag {
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     font-weight: 600;
   }
 
-  .bar-row.aos .tag{ color: var(--aos); }
-  .bar-row.soa .tag{ color: var(--soa); }
+  .bar-row.aos .tag { color: var(--secondary-color); }
+  .bar-row.soa .tag { color: var(--primary-color); }
 
-  .track{
-    background: var(--surface-2);
-    border-radius: 6px;
-    height: 22px;
+  .track {
+    background: var(--input-bg);
+    border-radius: 10px;
+    height: 18px;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
   }
 
-  .fill{
+  .fill {
     height: 100%;
-    border-radius: 5px 0 0 5px;
-    transition: width 0.6s cubic-bezier(.2,.8,.2,1);
+    border-radius: 10px;
+    transition: width 0.6s ease;
     width: 0%;
   }
 
-  .fill.aos{ background: var(--aos); }
-  .fill.soa{ background: var(--soa); }
+  .fill.aos { background: var(--secondary-color); }
+  .fill.soa { background: var(--primary-color); }
 
-  .bar-row .ms{
+  .bar-row .ms {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     text-align: right;
-    color: var(--muted);
+    color: var(--text-secondary);
   }
 
-  table.samples{
+  /* Tablas y Footer */
+  table.samples {
     width: 100%;
     border-collapse: collapse;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
   }
 
-  table.samples th, table.samples td{
+  table.samples th, table.samples td {
     text-align: right;
     padding: 8px 10px;
-    border-bottom: 1px solid var(--border);
-    color: var(--muted);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
   }
 
-  table.samples th:first-child, table.samples td:first-child{
+  table.samples th:first-child, table.samples td:first-child {
     text-align: left;
-    color: var(--text);
+    color: var(--text-primary);
   }
 
-  table.samples th{
-    font-weight: 500;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.06em;
-  }
-
-  footer{
-    margin-top: 40px;
-    color: var(--muted);
+  footer {
+    margin-top: 30px;
+    color: var(--text-secondary);
     font-size: 12px;
     line-height: 1.6;
-    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
   }
 
-  footer code{
-    background: var(--surface-2);
-    padding: 1px 5px;
+  footer code {
+    background: var(--input-bg);
+    padding: 2px 6px;
     border-radius: 4px;
+    border: 1px solid var(--border-color);
   }
 
-  @media (max-width: 640px){
-    .controls{ grid-template-columns: 1fr; }
-    .memory-viz{ grid-template-columns: 1fr; }
-    .bar-row{ grid-template-columns: 70px 1fr 80px; }
-    .headline .num{ font-size: 40px; }
+  @media (max-width: 640px) {
+    .controls { grid-template-columns: 1fr; }
+    .memory-viz { grid-template-columns: 1fr; }
+    .bar-row { grid-template-columns: 60px 1fr 70px; }
   }
 </style>
 </head>
@@ -377,7 +391,7 @@
   <header>
     <!-- <p class="eyebrow">Layout de memoria en JS</p> -->
     <h1>Array of Structures vs Structure of Arrays</h1>
-    <p>Mismos datos, dos formas de guardarlos en memoria. Este benchmark simula un sistema de partículas (posición + velocidad) actualizándose en cada frame, una vez con un array de objetos y otra con <code>Float32Array</code> separados por campo.</p>
+    <p>Utilizando los mismos datos, vemos dos formas de guardarlos en memoria. Este benchmark simula un sistema de partículas simple (posición en xyz + velocidad) actualizándose en cada frame, una vez con un array de objetos y otra con <code>Float32Array</code>.</p>
   </header>
 
   <div class="memory-viz">
@@ -395,27 +409,32 @@
 
   <div class="panel">
     <h2>Simulación en vivo</h2>
-    <p class="mem-caption" style="margin-top:-6px; margin-bottom:16px;">Estas partículas se mueven en tiempo real ejecutando exactamente el mismo cálculo que corre el benchmark: <code style="font-family:'JetBrains Mono',monospace">posición += velocidad</code>, frame a frame. La diferencia entre AoS y SoA está en cómo están guardados esos números en memoria, no en la fórmula.</p>
+    <p class="mem-caption" style="margin-top:-6px; margin-bottom:16px;">Estas partículas se mueven en tiempo real ejecutando distintos cálculos frame a frame. La diferencia entre AoS y SoA está en cómo están guardados esos números en memoria, no en la fórmula.</p>
 
     <div class="live-controls">
       <div class="field" style="flex:1; min-width:200px;">
         <label>Entidades por lado: <span class="value" id="liveCountOut">90</span></label>
-        <input type="range" id="liveCount" min="10" max="4000" step="10" value="90">
+        <input type="range" id="liveCount" min="10" max="20000" step="10" value="90">
       </div>
-      <button id="liveToggle" class="btn-toggle">Pausar</button>
-      <span id="liveFps" class="live-fps">-- fps</span>
+      <button id="liveToggle" class="btn-toggle">Pausar ambos</button>
     </div>
 
     <div class="memory-viz" style="margin: 0;">
       <div class="mem-block">
-        <div class="label"><b>AoS</b><span>array de objetos</span></div>
+        <div class="label"><b>AoS</b><span id="aosFps">-- fps</span></div>
         <canvas id="aosCanvas" width="440" height="200"></canvas>
+        <p class="mem-caption" id="aosFpsAvg" style="margin-top:8px; margin-bottom:0;">Promedio: -- fps</p>
+        <button id="aosToggle" class="btn-toggle" style="width:100%; margin-top:10px;">Pausar AoS</button>
       </div>
       <div class="mem-block">
-        <div class="label"><b>SoA</b><span>Float32Array por campo</span></div>
+        <div class="label"><b>SoA</b><span id="soaFps">-- fps</span></div>
         <canvas id="soaCanvas" width="440" height="200"></canvas>
+        <p class="mem-caption" id="soaFpsAvg" style="margin-top:8px; margin-bottom:0;">Promedio: -- fps</p>
+        <button id="soaToggle" class="btn-toggle" style="width:100%; margin-top:10px;">Pausar SoA</button>
       </div>
     </div>
+
+    <p class="mem-caption" id="combinedFpsAvg" style="text-align:center; margin-top:16px; margin-bottom:0;">Promedio combinado: -- fps</p>
   </div>
 
   <div class="panel">
@@ -423,7 +442,7 @@
     <div class="controls">
       <div class="field">
         <label>Partículas: <span class="value" id="nOut">500,000</span></label>
-        <input type="range" id="n" min="10000" max="3000000" step="10000" value="500000">
+        <input type="range" id="n" min="10000" max="1000000" step="10000" value="500000">
       </div>
       <div class="field">
         <label>Frames de simulación: <span class="value" id="itOut">120</span></label>
@@ -470,7 +489,7 @@
   </div>
 
   <footer>
-    Cada corrida hace un <code>warmup</code> descartado antes de medir, y reporta la mediana para reducir ruido del JIT y del recolector de basura. El bucle cede el hilo entre repeticiones (<code>await</code> + <code>setTimeout</code>) para que la pestaña no se congele en N grandes.
+    Cada corrida del benchmark "calienta" haciendo una operación que es descartada antes de medir. También reporta la media para reducir ruido del JIT y del recolector de basura. El bucle cede el hilo entre repeticiones (con <code>await</code> y <code>setTimeout</code>) para que la pestaña no se congele en N grandes.
   </footer>
 
 </div>
@@ -509,7 +528,13 @@
   const liveCountSlider = document.getElementById('liveCount');
   const liveCountLabel = document.getElementById('liveCountOut');
   const liveToggleButton = document.getElementById('liveToggle');
-  const liveFpsLabel = document.getElementById('liveFps');
+  const aosToggleButton = document.getElementById('aosToggle');
+  const soaToggleButton = document.getElementById('soaToggle');
+  const aosFpsLabel = document.getElementById('aosFps');
+  const soaFpsLabel = document.getElementById('soaFps');
+  const aosFpsAvgLabel = document.getElementById('aosFpsAvg');
+  const soaFpsAvgLabel = document.getElementById('soaFpsAvg');
+  const combinedFpsAvgLabel = document.getElementById('combinedFpsAvg');
 
   function buildLiveAoSParticles(count){
     const particles = new Array(count);
@@ -518,15 +543,29 @@
         x: Math.random()*canvasWidth,
         y: Math.random()*canvasHeight,
         vx: (Math.random()-0.5) * 1.6,
-        vy: (Math.random()-0.5) * 1.6
+        vy: (Math.random()-0.5) * 1.6,
+        phase: Math.random() * Math.PI * 2
       };
     }
     return particles;
   }
 
+  // Cada partícula, además de moverse, queda "empujada" por un campo de
+  // remolino que depende de su propia posición (2 sin + 2 cos por partícula
+  // por frame). Esto sube bastante el costo de cómputo por entidad, para que
+  // el acceso a memoria vuelva a pesar frente al costo de dibujado en canvas.
+  function applySwirlForce(particle){
+    const angle = Math.sin((particle.x + particle.phase) * 0.02) + Math.cos((particle.y - particle.phase) * 0.02);
+    const forceX = Math.cos(angle) * 0.05;
+    const forceY = Math.sin(angle) * 0.05;
+    particle.vx = (particle.vx + forceX) * 0.985;
+    particle.vy = (particle.vy + forceY) * 0.985;
+  }
+
   function stepLiveAoSParticles(particles){
     for(let index=0; index<particles.length; index++){
       const particle = particles[index];
+      applySwirlForce(particle);
       particle.x += particle.vx;
       particle.y += particle.vy;
       if(particle.x < 0 || particle.x > canvasWidth) particle.vx *= -1;
@@ -537,18 +576,28 @@
   function buildLiveSoAParticles(count){
     const x = new Float32Array(count), y = new Float32Array(count);
     const vx = new Float32Array(count), vy = new Float32Array(count);
+    const phase = new Float32Array(count);
     for(let index=0; index<count; index++){
       x[index] = Math.random()*canvasWidth;
       y[index] = Math.random()*canvasHeight;
       vx[index] = (Math.random()-0.5) * 1.6;
       vy[index] = (Math.random()-0.5) * 1.6;
+      phase[index] = Math.random() * Math.PI * 2;
     }
-    return {x,y,vx,vy};
+    return {x,y,vx,vy,phase};
   }
 
   function stepLiveSoAParticles(soaData){
-    const {x,y,vx,vy} = soaData;
+    const {x,y,vx,vy,phase} = soaData;
     const count = x.length;
+    // mismo campo de remolino que en AoS, pero recorriendo un array por vez
+    for(let index=0; index<count; index++){
+      const angle = Math.sin((x[index] + phase[index]) * 0.02) + Math.cos((y[index] - phase[index]) * 0.02);
+      const forceX = Math.cos(angle) * 0.05;
+      const forceY = Math.sin(angle) * 0.05;
+      vx[index] = (vx[index] + forceX) * 0.985;
+      vy[index] = (vy[index] + forceY) * 0.985;
+    }
     for(let index=0; index<count; index++) x[index] += vx[index];
     for(let index=0; index<count; index++) y[index] += vy[index];
     for(let index=0; index<count; index++){
@@ -581,47 +630,174 @@
 
   let liveAoSParticles = buildLiveAoSParticles(parseInt(liveCountSlider.value, 10));
   let liveSoAParticles = buildLiveSoAParticles(parseInt(liveCountSlider.value, 10));
-  let isLiveRunning = true;
-  let liveAnimationFrameId = null;
+  let isAosRunning = true;
+  let isSoaRunning = true;
+  let aosAnimationFrameId = null;
+  let soaAnimationFrameId = null;
 
-  // medición de FPS: cuenta frames dibujados por segundo real
-  let fpsFrameCount = 0;
-  let fpsWindowStart = performance.now();
+  // medición de FPS: cada canvas cuenta sus propios frames dibujados por segundo real,
+  // de forma independiente, para que se note si uno rinde peor que el otro sin que
+  // pausar uno afecte la medición del otro.
+  let aosFpsFrameCount = 0;
+  let aosFpsWindowStart = performance.now();
+  let soaFpsFrameCount = 0;
+  let soaFpsWindowStart = performance.now();
 
-  function liveAnimationLoop(){
-    stepLiveAoSParticles(liveAoSParticles);
-    stepLiveSoAParticles(liveSoAParticles);
-    drawAoSFrame(liveAoSParticles);
-    drawSoAFrame(liveSoAParticles);
+  // acumuladores de promedio: cuentan frames y tiempo total desde el último
+  // reinicio (se reinician cuando cambia la cantidad de entidades)
+  let aosAvgFrameCount = 0;
+  let aosAvgStartTime = performance.now();
+  let aosAvgFpsValue = 0;
+  let soaAvgFrameCount = 0;
+  let soaAvgStartTime = performance.now();
+  let soaAvgFpsValue = 0;
 
-    fpsFrameCount++;
-    const now = performance.now();
-    const elapsed = now - fpsWindowStart;
-    if(elapsed >= 500){
-      const fps = (fpsFrameCount / elapsed) * 1000;
-      liveFpsLabel.textContent = fps.toFixed(0) + ' fps';
-      fpsFrameCount = 0;
-      fpsWindowStart = now;
-    }
-
-    if(isLiveRunning){
-      liveAnimationFrameId = requestAnimationFrame(liveAnimationLoop);
+  function updateCombinedFpsAvg(){
+    if(aosAvgFpsValue > 0 && soaAvgFpsValue > 0){
+      const combined = (aosAvgFpsValue + soaAvgFpsValue) / 2;
+      combinedFpsAvgLabel.textContent = 'Promedio combinado: ' + combined.toFixed(0) + ' fps';
+    } else {
+      combinedFpsAvgLabel.textContent = 'Promedio combinado: -- fps';
     }
   }
-  liveAnimationFrameId = requestAnimationFrame(liveAnimationLoop);
+
+  function resetFpsStats(){
+    const now = performance.now();
+    aosFpsFrameCount = 0;
+    aosFpsWindowStart = now;
+    soaFpsFrameCount = 0;
+    soaFpsWindowStart = now;
+    aosAvgFrameCount = 0;
+    aosAvgStartTime = now;
+    aosAvgFpsValue = 0;
+    soaAvgFrameCount = 0;
+    soaAvgStartTime = now;
+    soaAvgFpsValue = 0;
+    // si alguno estaba en pausa, el ancla de pausa se reubica a "ahora" para
+    // que el tiempo ya transcurrido en pausa no se cuente al reanudar
+    aosPauseStartTime = isAosRunning ? null : now;
+    soaPauseStartTime = isSoaRunning ? null : now;
+    aosFpsAvgLabel.textContent = 'Promedio: -- fps';
+    soaFpsAvgLabel.textContent = 'Promedio: -- fps';
+    updateCombinedFpsAvg();
+  }
+
+  function aosAnimationLoop(){
+    stepLiveAoSParticles(liveAoSParticles);
+    drawAoSFrame(liveAoSParticles);
+
+    aosFpsFrameCount++;
+    aosAvgFrameCount++;
+    const now = performance.now();
+    const elapsed = now - aosFpsWindowStart;
+    if(elapsed >= 500){
+      const fps = (aosFpsFrameCount / elapsed) * 1000;
+      aosFpsLabel.textContent = fps.toFixed(0) + ' fps';
+      aosFpsFrameCount = 0;
+      aosFpsWindowStart = now;
+
+      aosAvgFpsValue = (aosAvgFrameCount / (now - aosAvgStartTime)) * 1000;
+      aosFpsAvgLabel.textContent = 'Promedio: ' + aosAvgFpsValue.toFixed(0) + ' fps';
+      updateCombinedFpsAvg();
+    }
+
+    if(isAosRunning){
+      aosAnimationFrameId = requestAnimationFrame(aosAnimationLoop);
+    }
+  }
+
+  function soaAnimationLoop(){
+    stepLiveSoAParticles(liveSoAParticles);
+    drawSoAFrame(liveSoAParticles);
+
+    soaFpsFrameCount++;
+    soaAvgFrameCount++;
+    const now = performance.now();
+    const elapsed = now - soaFpsWindowStart;
+    if(elapsed >= 500){
+      const fps = (soaFpsFrameCount / elapsed) * 1000;
+      soaFpsLabel.textContent = fps.toFixed(0) + ' fps';
+      soaFpsFrameCount = 0;
+      soaFpsWindowStart = now;
+
+      soaAvgFpsValue = (soaAvgFrameCount / (now - soaAvgStartTime)) * 1000;
+      soaFpsAvgLabel.textContent = 'Promedio: ' + soaAvgFpsValue.toFixed(0) + ' fps';
+      updateCombinedFpsAvg();
+    }
+
+    if(isSoaRunning){
+      soaAnimationFrameId = requestAnimationFrame(soaAnimationLoop);
+    }
+  }
+
+  let aosPauseStartTime = null;
+  let soaPauseStartTime = null;
+
+  function setAosRunning(running){
+    isAosRunning = running;
+    aosToggleButton.textContent = running ? 'Pausar AoS' : 'Reanudar AoS';
+    if(running){
+      const now = performance.now();
+      if(aosPauseStartTime !== null){
+        // el tiempo en pausa no debe contar para el promedio: corremos el
+        // inicio de la ventana de promedio hacia adelante por lo que duró la pausa
+        aosAvgStartTime += now - aosPauseStartTime;
+        aosPauseStartTime = null;
+      }
+      aosFpsFrameCount = 0;
+      aosFpsWindowStart = now;
+      aosAnimationFrameId = requestAnimationFrame(aosAnimationLoop);
+    } else {
+      aosPauseStartTime = performance.now();
+      aosFpsLabel.textContent = 'en pausa';
+      cancelAnimationFrame(aosAnimationFrameId);
+    }
+  }
+
+  function setSoaRunning(running){
+    isSoaRunning = running;
+    soaToggleButton.textContent = running ? 'Pausar SoA' : 'Reanudar SoA';
+    if(running){
+      const now = performance.now();
+      if(soaPauseStartTime !== null){
+        soaAvgStartTime += now - soaPauseStartTime;
+        soaPauseStartTime = null;
+      }
+      soaFpsFrameCount = 0;
+      soaFpsWindowStart = now;
+      soaAnimationFrameId = requestAnimationFrame(soaAnimationLoop);
+    } else {
+      soaPauseStartTime = performance.now();
+      soaFpsLabel.textContent = 'en pausa';
+      cancelAnimationFrame(soaAnimationFrameId);
+    }
+  }
+
+  function updateBothToggleLabel(){
+    liveToggleButton.textContent = (isAosRunning || isSoaRunning) ? 'Pausar ambos' : 'Reanudar ambos';
+  }
+
+  aosAnimationFrameId = requestAnimationFrame(aosAnimationLoop);
+  soaAnimationFrameId = requestAnimationFrame(soaAnimationLoop);
+  updateBothToggleLabel();
+
+  aosToggleButton.addEventListener('click', () => {
+    setAosRunning(!isAosRunning);
+    updateBothToggleLabel();
+  });
+
+  soaToggleButton.addEventListener('click', () => {
+    setSoaRunning(!isSoaRunning);
+    updateBothToggleLabel();
+  });
 
   liveToggleButton.addEventListener('click', () => {
-    isLiveRunning = !isLiveRunning;
-    if(isLiveRunning){
-      liveToggleButton.textContent = 'Pausar';
-      fpsFrameCount = 0;
-      fpsWindowStart = performance.now();
-      liveAnimationFrameId = requestAnimationFrame(liveAnimationLoop);
-    } else {
-      liveToggleButton.textContent = 'Reanudar';
-      liveFpsLabel.textContent = 'en pausa';
-      cancelAnimationFrame(liveAnimationFrameId);
-    }
+    // si al menos uno está corriendo, el botón combinado pausa los dos;
+    // si ya estaban los dos en pausa, los reanuda a los dos
+    const shouldRun = !(isAosRunning || isSoaRunning);
+    setAosRunning(shouldRun);
+    setSoaRunning(shouldRun);
+    updateBothToggleLabel();
   });
 
   liveCountSlider.addEventListener('input', () => {
@@ -629,6 +805,7 @@
     liveCountLabel.textContent = formatNumberLive(newCount);
     liveAoSParticles = buildLiveAoSParticles(newCount);
     liveSoAParticles = buildLiveSoAParticles(newCount);
+    resetFpsStats();
   });
 
   function formatNumberLive(value){
